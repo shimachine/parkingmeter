@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1f6feb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="駐車メーター">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<title>駐車メーターマップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<style>
+:root{--blue:#1f6feb;--panel:#fff;--border:#d8dee4;--text:#1f2328;--muted:#656d76}
+*{box-sizing:border-box} html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:var(--text);background:#f6f8fa}
+#app{height:100%;display:flex;flex-direction:column}
+#topbar{padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));background:rgba(255,255,255,.98);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;z-index:1000;box-shadow:0 1px 5px rgba(0,0,0,.08)}
+#searchBox{height:48px;min-width:0;flex:1;border:1px solid #b6bec8;border-radius:12px;padding:0 14px;font-size:17px;outline:none;background:#fff}
+#searchBox:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(31,111,235,.15)}
+.iconBtn,.mainBtn{height:48px;border:1px solid var(--border);border-radius:12px;background:#fff;font-size:16px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0 13px;white-space:nowrap}
+.iconBtn{width:48px;padding:0;font-size:22px}.mainBtn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+#filterbar{display:flex;gap:7px;padding:8px 12px;background:#fff;overflow-x:auto;z-index:999;border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.filter{height:40px;border-radius:20px;padding:0 12px;border:1px solid var(--border);background:#fff;font-size:14px;font-weight:600;white-space:nowrap;cursor:pointer}.filter.active{box-shadow:inset 0 0 0 2px rgba(0,0,0,.12)}
+.filter.blue{border-color:#3b82f6}.filter.green{border-color:#9acd32}.filter.black{border-color:#333}.filter.fav{border-color:#e0a100}
+#mapWrap{position:relative;flex:1;min-height:0}#map{height:100%;width:100%}
+#status{position:absolute;left:12px;right:12px;bottom:12px;z-index:800;pointer-events:none;display:flex;justify-content:center}
+#status span{background:rgba(31,35,40,.88);color:#fff;padding:8px 12px;border-radius:18px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+#nearbyPanel{position:absolute;right:12px;top:12px;bottom:12px;width:min(360px,calc(100% - 24px));z-index:900;background:rgba(255,255,255,.98);border:1px solid var(--border);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.18);display:none;overflow:hidden}
+#nearbyPanel.open{display:flex;flex-direction:column}#nearbyHeader{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-weight:700}
+#nearbyList{overflow:auto;padding:8px}.nearItem{padding:12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:#fff;cursor:pointer}.nearItem:active{background:#f6f8fa}.nearTitle{font-weight:700}.nearMeta{font-size:13px;color:var(--muted);margin-top:4px}.nearDistance{font-weight:700;margin-top:5px}
+.closeBtn{border:0;background:#f0f2f5;border-radius:9px;width:36px;height:36px;font-size:18px}
+.leaflet-popup-content{margin:12px 14px;min-width:230px;max-width:310px}.popupTitle{font-size:16px;font-weight:800;margin-bottom:7px}.popupRow{font-size:13px;line-height:1.5}.popupActions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}.routeBtn,.favBtn{border:1px solid var(--border);border-radius:9px;background:#fff;padding:8px 9px;font-weight:700;cursor:pointer}.routeBtn.google{border-color:#4285f4}.routeBtn.apple{border-color:#777}.favBtn{border-color:#e0a100}.favBtn.on{background:#fff4c2}
+#results{position:absolute;left:12px;right:12px;top:12px;z-index:950;max-height:45%;overflow:auto;display:none}.resultCard{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;padding:10px;box-shadow:0 2px 7px rgba(0,0,0,.12);cursor:pointer}.resultCard strong{display:block}.resultCard small{color:var(--muted)}
+@media(max-width:600px){
+ #topbar{padding-left:8px;padding-right:8px}.iconBtn{width:48px}.mainBtn{padding:0 10px}.filter{height:38px}
+ #nearbyPanel{left:8px;right:8px;bottom:8px;top:auto;width:auto;height:min(55vh,430px)}
+ #results{top:8px;max-height:42%}.leaflet-popup-content{min-width:240px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <input id="searchBox" type="search" autocomplete="off" placeholder="住所・建物・属性を検索" aria-label="住所・建物・属性を検索">
+    <button class="iconBtn primary" id="searchBtn" title="検索" aria-label="検索">🔍</button>
+    <button class="iconBtn" id="currentBtn" title="現在地" aria-label="現在地">📍</button>
+    <button class="iconBtn" id="nearBtn" title="近い順" aria-label="近い順">🚗</button>
+  </div>
+  <div id="filterbar">
+    <button class="filter active" data-filter="all">すべて</button>
+    <button class="filter blue" data-filter="blue">🟦 日曜・休日利用可</button>
+    <button class="filter green" data-filter="green">🟩 日曜・休日を除く</button>
+    <button class="filter black" data-filter="black">⬛ 土・日曜、休日を除く</button>
+    <button class="filter fav" data-filter="fav">⭐ お気に入り</button>
+  </div>
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="results"></div>
+    <div id="nearbyPanel"><div id="nearbyHeader"><span>📍 現在地から近い順</span><button class="closeBtn" id="closeNearby">×</button></div><div id="nearbyList"></div></div>
+    <div id="status"><span id="statusText">データを読み込んでいます…</span></div>
+  </div>
+</div>
+<script>
+let map, layer, data=null, currentPosition=null, favoriteIds=new Set();
+const COLORS={blue:'#1f6feb',green:'yellowgreen',black:'#111',gray:'#888'};
+try{favoriteIds=new Set(JSON.parse(localStorage.getItem('parkingmeter_favorites')||'[]').map(String));}catch(e){}
+
+function getColorKey(p){
+ const val=String(p['制限事項1']??'').trim();
+ if(val==='土・日曜、休日を除く') return 'black';
+ if(val==='日曜・休日を除く') return 'green';
+ if(val==='') return 'blue';
+ return 'gray';
+}
+function getColor(p){return COLORS[getColorKey(p)]||COLORS.gray;}
+function getId(f){return String(f.properties['識別id'] ?? '');}
+function esc(v){return String(v??'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+function featureCenter(f){
+ let pts=[]; const c=f.geometry?.coordinates||[];
+ function walk(a){if(typeof a[0]==='number') pts.push([a[1],a[0]]); else a.forEach(walk)} walk(c);
+ if(!pts.length)return null; let lat=0,lon=0;pts.forEach(p=>{lat+=p[0];lon+=p[1]});return [lat/pts.length,lon/pts.length];
+}
+function featureDistance(f,pos){
+ let best=Infinity; const c=f.geometry?.coordinates||[]; const base=L.latLng(pos.lat,pos.lon);
+ function walk(a){if(typeof a[0]==='number'){best=Math.min(best,base.distanceTo(L.latLng(a[1],a[0])))}else a.forEach(walk)} walk(c); return best;
+}
+function formatDistance(m){return m<1000?Math.round(m)+' m':(m/1000).toFixed(1)+' km';}
+function saveFav(){localStorage.setItem('parkingmeter_favorites',JSON.stringify([...favoriteIds]));}
+function toggleFavorite(id){id=String(id); if(favoriteIds.has(id)) favoriteIds.delete(id); else favoriteIds.add(id); saveFav(); refreshLayer(); if(document.getElementById('nearbyPanel').classList.contains('open')) showNearby();}
+function routeButtons(lat,lon,id){
+ const g='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(lat+','+lon);
+ const a='https://maps.apple.com/?daddr='+encodeURIComponent(lat+','+lon)+'&dirflg=d';
+ const fav=favoriteIds.has(String(id));
+ return `<div class="popupActions"><button class="routeBtn google" onclick="window.open('${g}','_blank')">🚗 Googleマップでルート</button><button class="routeBtn apple" onclick="window.location.href='${a}'">🗺️ Appleマップでルート</button><button class="favBtn ${fav?'on':''}" onclick="toggleFavorite('${esc(id)}')">${fav?'★ お気に入り解除':'☆ お気に入り登録'}</button></div>`;
+}
+function popupHtml(f){
+ const p=f.properties, id=getId(f), center=featureCenter(f); let rows='';
+ Object.keys(p).forEach(k=>rows+=`<div class="popupRow"><b>${esc(k)}</b>：${esc(p[k])}</div>`);
+ let dist=currentPosition&&center?`<div class="popupRow"><b>現在地から</b>：${formatDistance(featureDistance(f,currentPosition))}</div>`:'';
+ return `<div class="popupTitle">駐車メーター #${esc(id)}</div>${dist}${rows}${center?routeButtons(center[0],center[1],id):''}`;
+}
+function featureVisible(f){const active=document.querySelector('.filter.active')?.dataset.filter||'all'; if(active==='all')return true;if(active==='fav')return favoriteIds.has(getId(f));return getColorKey(f.properties)===active;}
+function refreshLayer(){
+ if(!data)return; if(layer)layer.remove();
+ layer=L.geoJSON(data,{filter:featureVisible,style:f=>({color:getColor(f.properties),weight:5,opacity:.9}),onEachFeature:(f,l)=>l.bindPopup(popupHtml(f))}).addTo(map);
+ updateStatus();
+}
+function updateStatus(){const active=document.querySelector('.filter.active')?.textContent||'すべて';const n=layer?Object.keys(layer._layers).length:0;document.getElementById('statusText').textContent=`${active}：${n}件`}
+function showStatus(msg,ms=2200){const el=document.getElementById('statusText');el.textContent=msg;setTimeout(updateStatus,ms)}
+
+async function loadData(){
+ try{
+   const r=await fetch('./data.json',{cache:'no-store'}); if(!r.ok)throw new Error(r.status); data=await r.json();
+   refreshLayer(); showStatus(`データ更新：${data.features.length}件`);
+ }catch(e){showStatus('データを読み込めませんでした。通信を確認してください。',5000);console.error(e)}
+}
+
+async function search(){
+ const q=document.getElementById('searchBox').value.trim(); if(!q)return;
+ const results=document.getElementById('results'); results.innerHTML=''; results.style.display='none';
+ // 1) CSV/GeoJSON属性を全文検索
+ const local=(data?.features||[]).filter(f=>Object.values(f.properties||{}).some(v=>String(v??'').toLowerCase().includes(q.toLowerCase())));
+ if(local.length){
+   results.innerHTML=local.slice(0,12).map(f=>`<div class="resultCard" data-id="${esc(getId(f))}"><strong>駐車メーター #${esc(getId(f))}</strong><small>${Object.entries(f.properties).slice(0,4).map(([k,v])=>esc(k)+'：'+esc(v)).join(' ／ ')}</small></div>`).join('');
+   results.style.display='block'; results.querySelectorAll('.resultCard').forEach(card=>card.onclick=()=>focusFeature(card.dataset.id));
+   if(local.length===1){focusFeature(getId(local[0]));results.style.display='none';} else {showStatus(`属性検索：${local.length}件`);}
+   return;
+ }
+ // 2) 住所・建物名はNominatimで検索
+ try{
+   const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ja&q='+encodeURIComponent(q));
+   const arr=await r.json();
+   if(arr.length){map.setView([+arr[0].lat,+arr[0].lon],16);showStatus('地図を検索場所へ移動しました');}
+   else showStatus('見つかりませんでした',3000);
+ }catch(e){showStatus('住所検索に失敗しました',3000)}
+}
+function focusFeature(id){const f=(data?.features||[]).find(x=>getId(x)===String(id));if(!f)return;const center=featureCenter(f);if(center){map.setView(center,17);setTimeout(()=>{layer.eachLayer(l=>{if(l.feature&&getId(l.feature)===String(id))l.openPopup()})},250)}document.getElementById('results').style.display='none';}
+function goCurrent(){
+ if(!navigator.geolocation){showStatus('この端末では現在地を取得できません');return}
+ showStatus('現在地を取得しています…',5000);
+ navigator.geolocation.getCurrentPosition(pos=>{currentPosition={lat:pos.coords.latitude,lon:pos.coords.longitude};map.setView([currentPosition.lat,currentPosition.lon],16);showNearby();refreshLayer();showStatus('現在地を取得しました');},err=>showStatus('位置情報が取得できませんでした',3500),{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
+}
+function showNearby(){
+ if(!currentPosition||!data)return; const panel=document.getElementById('nearbyPanel'), list=document.getElementById('nearbyList'); panel.classList.add('open');
+ const arr=data.features.filter(featureVisible).map(f=>({f,d:featureDistance(f,currentPosition)})).sort((a,b)=>a.d-b.d).slice(0,30);
+ list.innerHTML=arr.map(x=>{const p=x.f.properties,id=getId(x.f),c=featureCenter(x.f);return `<div class="nearItem" data-id="${esc(id)}"><div class="nearTitle">${favoriteIds.has(id)?'⭐ ':''}駐車メーター #${esc(id)}</div><div class="nearMeta">${esc(p['種別']||'')} ／ ${esc(p['利用時間']||'')}</div><div class="nearDistance">現在地から ${formatDistance(x.d)}</div></div>`}).join('') || '<div class="nearItem">対象がありません</div>';
+ list.querySelectorAll('.nearItem').forEach(el=>el.onclick=()=>focusFeature(el.dataset.id));
+}
+
+document.getElementById('searchBtn').onclick=search; document.getElementById('currentBtn').onclick=goCurrent; document.getElementById('nearBtn').onclick=()=>currentPosition?showNearby():goCurrent(); document.getElementById('closeNearby').onclick=()=>document.getElementById('nearbyPanel').classList.remove('open'); document.getElementById('searchBox').addEventListener('keydown',e=>{if(e.key==='Enter')search()});
+document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');refreshLayer();if(b.dataset.filter==='fav'&&!favoriteIds.size)showStatus('お気に入りはまだありません');if(currentPosition&&document.getElementById('nearbyPanel').classList.contains('open'))showNearby()});
+
+map=L.map('map').setView([35.68,139.76],12); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map); loadData();
+</script>
+<script>if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));</script>
+</body></html>
